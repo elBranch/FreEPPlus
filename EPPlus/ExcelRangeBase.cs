@@ -29,6 +29,7 @@
  * Jan Källman		    Initial Release		        2010-01-28
  * Jan Källman		    License changed GPL-->LGPL  2011-12-27
  * Eyal Seagull		    Conditional Formatting      2012-04-03
+ * elBranch 		    ExcelColumnAttribute        2023-10-17
  *******************************************************************************/
 using System;
 using System.Collections.Generic;
@@ -51,6 +52,7 @@ using OfficeOpenXml.DataValidation.Contracts;
 using System.Reflection;
 using OfficeOpenXml.Style.XmlAccess;
 using System.Security;
+using FreEPPlus;
 using OfficeOpenXml.ConditionalFormatting;
 using OfficeOpenXml.ConditionalFormatting.Contracts;
 using OfficeOpenXml.FormulaParsing.LexicalAnalysis;
@@ -2064,6 +2066,9 @@ namespace OfficeOpenXml
                 }
             }
 
+            // 2023-10-17 - elBranch - Introduce ExcelColumnAttribute
+            var numberFormat = new string[Members.Length];
+
             // create buffer
             object[,] values = new object[(PrintHeaders ? Collection.Count() + 1 : Collection.Count()), Members.Count()];
 
@@ -2072,26 +2077,37 @@ namespace OfficeOpenXml
             {
                 foreach (var t in Members)
                 {
-                    var descriptionAttribute = t.GetCustomAttributes(typeof(DescriptionAttribute), false).FirstOrDefault() as DescriptionAttribute;
+                    // 2023-10-17 - elBranch Introduce ExcelColumnAttribute
                     var header = string.Empty;
-                    if (descriptionAttribute != null)
+                    var cellColumnAttribute = t.GetCustomAttribute<ExcelColumnAttribute>(false);
+                    if (cellColumnAttribute != null)
                     {
-                        header = descriptionAttribute.Description;
+                        header = cellColumnAttribute.Name;
+                        numberFormat[col] = cellColumnAttribute.NumberFormat;
                     }
-                    else
+                    else 
                     {
-                        var displayNameAttribute =
-                            t.GetCustomAttributes(typeof(DisplayNameAttribute), false).FirstOrDefault() as
-                            DisplayNameAttribute;
-                        if (displayNameAttribute != null)
+                        var descriptionAttribute = t.GetCustomAttributes(typeof(DescriptionAttribute), false).FirstOrDefault() as DescriptionAttribute;
+                        if (descriptionAttribute != null)
                         {
-                            header = displayNameAttribute.DisplayName;
+                            header = descriptionAttribute.Description;
                         }
                         else
                         {
-                            header = t.Name.Replace('_', ' ');
+                            var displayNameAttribute =
+                                t.GetCustomAttributes(typeof(DisplayNameAttribute), false).FirstOrDefault() as 
+                                DisplayNameAttribute;
+                            if (displayNameAttribute != null)
+                            {
+                                header = displayNameAttribute.DisplayName;
+                            }
+                            else
+                            {
+                                header = t.Name.Replace('_', ' ');
+                            }
                         }
                     }
+
                     //_worksheet.SetValueInner(row, col++, header);
                     values[row, col++] = header;
                 }
@@ -2142,6 +2158,14 @@ namespace OfficeOpenXml
             if (row == 1 && PrintHeaders)
             {
                 row++;
+            }
+
+            // 2023-10-11 - elBranch - Introduce ExcelColumnAttribute
+            for (var iRow = _fromRow; iRow <= row; iRow++)
+            for (var iCol = _fromCol; iCol <= col; iCol++)
+            {
+                if (string.IsNullOrWhiteSpace(numberFormat[iCol - 1])) continue;
+                _worksheet.Cells[iRow, iCol].Style.Numberformat.Format = numberFormat[iCol - 1];
             }
 
             var r = _worksheet.Cells[_fromRow, _fromCol, _fromRow + row - 1, _fromCol + col - 1];
